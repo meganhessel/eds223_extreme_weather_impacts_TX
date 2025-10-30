@@ -17,6 +17,7 @@ library(spData) # spatial data
 library(spDataLarge) # spatial data
 library(geodata) # spatial data
 library(stars)
+library(raster)
 ```
 
 ```{r}
@@ -72,6 +73,8 @@ plot(light_1)
 ### Checking CRS
 
 ```{r}
+#| output: False 
+
 st_crs(light_1) # WGS 84 
 st_crs(light_2) # WGS 84
 st_crs(light_3) # WGS 84
@@ -127,7 +130,8 @@ crs_check(houses, geom_texas)
 
 ## Joining Texas Data
 
-### Combine Geometry with the American Community Survey data
+### Combine Geometry with the ACS
+(American Community Survey data)
 
 ```{r}
 # Combine the geometry (geom_texas) with the attributes (soc_texas) 
@@ -178,6 +182,8 @@ difference_mask[difference_mask == "FALSE" ] <- NA
 **Vectorize** the Blackout Mask
 
 ```{r}
+#| output: False 
+
 # Convert from a raster to a vector with st_as_sf
 diff_mask_vec <- st_as_sf(difference_mask)
 
@@ -192,6 +198,7 @@ diff_mask_vec <- st_make_valid(diff_mask_vec)
 **Crop** (spatially subset) the blackout mask to the Houston area
 
 ```{r}
+
 # Create the houston bounding box 
 bound_box <- st_bbox(c(xmin =-96.5, xmax = -94.5, ymax = 30.5, ymin = 29), crs = st_crs(difference_mask))
 
@@ -213,17 +220,30 @@ diff_crop_epsg <- st_transform(diff_crop, crs = 'EPSG:3083')
 ```{r}
 # Plot it! 
 tm_shape(diff_crop_epsg) + 
-  tm_polygons() + 
-  tm_basemap("CartoDB.PositronNoLabels") +
-  tm_title(text = "Backouts in Houston, TX")
+  tm_polygons(col = "firebrick4") + 
+  tm_basemap("OpenStreetMap") +
+  tm_title(text = "All Backouts in Houston, TX")
 ```
 
-Create **Before and After** plots - need to go back and do this !!
+Create **Before and After** plots - need to go back and do this !!!!
+
+A set of maps comparing night light intensities before and after the first two storms
 
 ```{r}
+library(gridExtra)
 
-plot(feb7sf) # bins: 1000, 1500, 3000, 5000
-plot(feb16sf) # bins: 5000, 15000, 25000 
+plot(feb7sf) # bins: 0, 1000, 1500, 3000, 4000, 5000
+plot(feb16sf) # bins: 0, 5000, 10000, 15000, 20000, 25000 
+
+
+#tm_shape(feb7sf) + 
+  #tm_raster(breaks = c(0, 1000, 1500, 3000, 4000, 5000))
+
+#tm_shape(feb16sf) + 
+  #tm_raster(breaks = c(0, 5000, 10000, 15000, 20000, 25000 ))
+  
+
+#grid.arrange(map1, map2, ncol=2)
 
 ```
 
@@ -256,13 +276,13 @@ blackouts_200m_highway <- st_difference(diff_crop, road_buffer)
 
 # Plot it 
 tm_shape(blackouts_200m_highway) + 
-  tm_polygons() + 
+  tm_polygons(col = "firebrick") + 
   tm_basemap("CartoDB.PositronNoLabels") +
   tm_title(text = "Backouts 200m from the highways in Houston, TX")
 
 ```
 
-# Identify the number of homes likely impacted by blackouts
+# Homes impacted by blackouts
 
 Homes that overlap with areas that experienced blackouts
 
@@ -281,6 +301,21 @@ diff_crop <- st_make_valid(diff_crop)
 # Homes that experienced  blackouts 
 home_blackout <- st_filter(diff_crop, houses, .predicate = st_contains)
 
+```
+
+
+Estimate of the number of homes in Houston that lost power
+```{r}
+# Number of observations in the home_blackout raster 
+est <- ncell(home_blackout)
+
+print(paste("About", est, "of Houston homes lost power"))
+
+```
+
+
+Mapping Homes that experienced blackouts
+```{r}
 # Map it! 
 tm_shape(home_blackout) + 
   tm_polygons() + 
@@ -288,3 +323,19 @@ tm_shape(home_blackout) +
   tm_title(text = "Homes that experienced blackouts in Houston, TX")
 
 ```
+
+
+
+# Comparing Blackouts with Cenus Track data 
+
+```{r}
+#tm_shape(texas_df) +
+  #tm_polygons(fill = 'B01001m12') + 
+  #tm_shape(diff_crop, is.main = TRUE)
+
+
+```
+
+
+
+
