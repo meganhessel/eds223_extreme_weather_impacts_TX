@@ -1,0 +1,290 @@
+---
+title: "extreme_weather_TX"
+format: html
+---
+
+## Downloading libraries and data
+
+```{r}
+# Import libraries 
+#| message: false
+#| warning: false
+library(terra) # raster handling
+library(tidyverse)
+library(tmap) # map making
+library(kableExtra) # table formatting
+library(spData) # spatial data
+library(spDataLarge) # spatial data
+library(geodata) # spatial data
+library(stars)
+```
+
+```{r}
+# Download Data 
+
+# Night lights data (VNP46A1)
+# with read_stars()... sf 
+light_1 <- read_stars(here::here("data", "VNP46A1", "VNP46A1.A2021038.h08v05.001.2021039064328.tif"))
+light_2 <- read_stars(here::here("data", "VNP46A1", "VNP46A1.A2021038.h08v06.001.2021039064329.tif"))
+light_3 <- read_stars(here::here("data", "VNP46A1", "VNP46A1.A2021047.h08v05.001.2021048091106.tif"))
+light_4 <- read_stars(here::here("data", "VNP46A1", "VNP46A1.A2021047.h08v06.001.2021048091105.tif"))
+
+# With rast()... terra
+#l1 <- rast("data/VNP46A1/VNP46A1.A2021038.h08v05.001.2021039064328.tif")
+#l2 <- rast("data/VNP46A1/VNP46A1.A2021038.h08v06.001.2021039064329.tif")
+#l3 <- rast("data/VNP46A1/VNP46A1.A2021047.h08v05.001.2021048091106.tif")
+#l4 <- rast("data/VNP46A1/VNP46A1.A2021047.h08v06.001.2021048091105.tif")
+
+
+# Road Data 
+roads <- st_read(here::here("data", "gis_osm_roads_free_1.gpkg"), query = "SELECT * FROM gis_osm_roads_free_1 WHERE fclass='motorway'")
+
+# House data 
+houses <- st_read(
+  here::here("data", "gis_osm_buildings_a_free_1.gpkg"),
+  query = "
+    SELECT *
+    FROM gis_osm_buildings_a_free_1
+    WHERE (type IS NULL AND name IS NULL)
+       OR type IN ('residential', 'apartments', 'house', 'static_caravan', 'detached')
+  ")
+
+# Socioecomic Data... TEXAS 
+soc_texas <- read_sf(here::here("data", "ACS_2019_5YR_TRACT_48_TEXAS.gdb"))
+
+# Texas geometries (polygons) 
+# Looking at the various layeres 
+st_layers(here::here("data", "ACS_2019_5YR_TRACT_48_TEXAS.gdb"))
+# Pulling out the geometry layer 
+geom_texas <- vect("data/ACS_2019_5YR_TRACT_48_TEXAS.gdb", layer = "ACS_2019_5YR_TRACT_48_TEXAS")
+
+# <- st_read(here::here("data/ACS_2019_5YR_TRACT_48_TEXAS.gdb"), layer = "ACS_2019_5YR_TRACT_48_TEXAS"))
+
+```
+
+```{r}
+# Look at light data 
+plot(light_1)
+```
+
+## Coordinate Reference Systems
+
+### Checking CRS
+
+```{r}
+st_crs(light_1) # WGS 84 
+st_crs(light_2) # WGS 84
+st_crs(light_3) # WGS 84
+st_crs(light_4) # WGS 84
+
+st_crs(roads) # WGS 84
+st_crs(houses) # WGS 84
+st_crs(geom_texas) # NAD83 *** NEEDS TO MATCH THE OTHERS ** 
+```
+
+```{r}
+# Create warning message function to check crs 
+crs_check <- function(crs1, crs2) {
+  if (st_crs(crs1) == st_crs(crs2)) {
+    print("its a match")
+  } else {
+    print("Its NOT a match")
+  }
+}
+
+# Check crs between roads, houses, and TX' geom
+crs_check(roads, houses)
+crs_check(roads, geom_texas)
+crs_check(houses, geom_texas)
+
+# Check crs between all the light dfs 
+crs_check(light_1, light_2)
+crs_check(light_1, light_3)
+crs_check(light_1, light_4)
+crs_check(light_2, light_3)
+crs_check(light_2, light_4)
+crs_check(light_3, light_4)
+```
+
+### Transforming CRS
+
+```{r}
+# Convert SpatVector to sf 
+sf_geom_texas <- st_as_sf(geom_texas)  
+
+# Change geom_texas crs to match roads' crs with st_transform()
+geom_texas <- st_transform(sf_geom_texas, st_crs(roads))
+```
+
+Final CRS Check
+
+```{r}
+# Check crs between roads, houses, and TX' geom
+crs_check(roads, houses)
+crs_check(roads, geom_texas)
+crs_check(houses, geom_texas)
+```
+
+## Joining Texas Data
+
+### Combine Geometry with the American Community Survey data
+
+```{r}
+# Combine the geometry (geom_texas) with the attributes (soc_texas) 
+print(dim(geom_texas))
+print(dim(soc_texas))
+
+# Joining Texas's Socioeconomic df and geometries
+texas_df <- cbind(geom_texas, soc_texas)
+print(dim(texas_df))
+```
+
+# Create blackout mask
+
+-   2021-02-07: l1 and l2
+
+-   2021-02-16: l3 and l4
+
+Create a raster object for each day
+
+**Combine** light data by date - Feb 7 and 16 For stars() light data
+
+```{r}
+# Combine light data based on y
+feb7sf <- c(light_1, light_2, along = "y")
+feb16sf <- c(light_3, light_4, along = "y")
+
+# Check if extents match 
+print(st_bbox(feb7sf))
+print(st_bbox(feb16sf))
+
+# Difference of the two days that are greater than 200 = blackouts
+# Creating a list of boolean operators 
+difference <- (feb16sf - feb7sf) > 200
+
+```
+
+**Create Mask & Subset** for Blackout Regions that are greater than 200
+
+```{r}
+# Create raster mask of the same resolution and extent  
+difference_mask <- difference
+
+# Assign NA to all locations that experienced a drop of less than 200 nW cm-2sr-1 change ("FALSE")
+difference_mask[difference_mask == "FALSE" ] <- NA 
+
+```
+
+**Vectorize** the Blackout Mask
+
+```{r}
+# Convert from a raster to a vector with st_as_sf
+diff_mask_vec <- st_as_sf(difference_mask)
+
+# Invalid geometries 
+which(!st_is_valid(diff_mask_vec)) # Tell us which specific ones are invalid 
+
+# Fixing invalid geometries  
+diff_mask_vec <- st_make_valid(diff_mask_vec)
+
+```
+
+**Crop** (spatially subset) the blackout mask to the Houston area
+
+```{r}
+# Create the houston bounding box 
+bound_box <- st_bbox(c(xmin =-96.5, xmax = -94.5, ymax = 30.5, ymin = 29), crs = st_crs(difference_mask))
+
+# Crop difference vector with the bounding box 
+diff_crop <- st_crop(diff_mask_vec, bound_box)
+#diff_crop <- difference_mask[bound_box, op = st_intersects]
+
+```
+
+**Re-project** the cropped blackout dataset to EPSG:3083
+
+```{r}
+# Changing the crs to NAD83 / Texas Centric Albers Equal Area
+diff_crop_epsg <- st_transform(diff_crop, crs = 'EPSG:3083')
+```
+
+**Plot**
+
+```{r}
+# Plot it! 
+tm_shape(diff_crop_epsg) + 
+  tm_polygons() + 
+  tm_basemap("CartoDB.PositronNoLabels") +
+  tm_title(text = "Backouts in Houston, TX")
+```
+
+Create **Before and After** plots - need to go back and do this !!
+
+```{r}
+
+plot(feb7sf) # bins: 1000, 1500, 3000, 5000
+plot(feb16sf) # bins: 5000, 15000, 25000 
+
+```
+
+# Exclude highways from the cropped blackout mask
+
+Identify areas within 200m of all highways
+
+```{r}
+# Unionize road data to make it more managable 
+roads_union <- st_union(roads)
+
+# Buffer areas within 200 m of all highways 
+road_buffer <- st_buffer(roads_union, dist = units::set_units(200, "m"))
+
+# Look at the Road buffer
+plot(road_buffer)
+
+```
+
+Areas that experienced blackouts that are further than 200m from a highway
+
+```{r}
+# Merge blackout areas with road buffer
+
+# Check if CRS match
+crs_check(road_buffer, diff_crop)
+
+# Locating all blackouts NOT within the 200m highway buffer 
+blackouts_200m_highway <- st_difference(diff_crop, road_buffer)
+
+# Plot it 
+tm_shape(blackouts_200m_highway) + 
+  tm_polygons() + 
+  tm_basemap("CartoDB.PositronNoLabels") +
+  tm_title(text = "Backouts 200m from the highways in Houston, TX")
+
+```
+
+# Identify the number of homes likely impacted by blackouts
+
+Homes that overlap with areas that experienced blackouts
+
+```{r}
+# Check crs 
+crs_check(houses, diff_crop)
+
+# Invalid geometries 
+which(!st_is_valid(houses))
+which(!st_is_valid(diff_crop))
+
+# Fixing invalid geometries  
+houses <- st_make_valid(houses)
+diff_crop <- st_make_valid(diff_crop)
+
+# Homes that experienced  blackouts 
+home_blackout <- st_filter(diff_crop, houses, .predicate = st_contains)
+
+# Map it! 
+tm_shape(home_blackout) + 
+  tm_polygons() + 
+  tm_basemap("CartoDB.PositronNoLabels") +
+  tm_title(text = "Homes that experienced blackouts in Houston, TX")
+
+```
