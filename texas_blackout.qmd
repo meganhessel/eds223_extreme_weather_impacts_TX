@@ -57,7 +57,13 @@ soc_texas <- read_sf(here::here("data", "ACS_2019_5YR_TRACT_48_TEXAS.gdb"))
 # Looking at the various layeres 
 st_layers(here::here("data", "ACS_2019_5YR_TRACT_48_TEXAS.gdb"))
 # Pulling out the geometry layer 
-geom_texas <- vect("data/ACS_2019_5YR_TRACT_48_TEXAS.gdb", layer = "ACS_2019_5YR_TRACT_48_TEXAS")
+#geom_texas <- vect("data/ACS_2019_5YR_TRACT_48_TEXAS.gdb", layer = "ACS_2019_5YR_TRACT_48_TEXAS")
+#income_texas <- vect("data/ACS_2019_5YR_TRACT_48_TEXAS.gdb", layer = "X19_INCOME")
+
+geom_texas <- st_read(here::here("data/ACS_2019_5YR_TRACT_48_TEXAS.gdb"), layer = "ACS_2019_5YR_TRACT_48_TEXAS")
+income_texas <- st_read(here::here("data/ACS_2019_5YR_TRACT_48_TEXAS.gdb"), layer = "X19_INCOME")
+
+
 
 # <- st_read(here::here("data/ACS_2019_5YR_TRACT_48_TEXAS.gdb"), layer = "ACS_2019_5YR_TRACT_48_TEXAS"))
 
@@ -107,16 +113,20 @@ crs_check(light_1, light_4)
 crs_check(light_2, light_3)
 crs_check(light_2, light_4)
 crs_check(light_3, light_4)
+
+# Need to change geom_texas and income_texas to match the others 
 ```
 
 ### Transforming CRS
 
 ```{r}
 # Convert SpatVector to sf 
-sf_geom_texas <- st_as_sf(geom_texas)  
+sf_geom_texas <- st_as_sf(geom_texas) 
+
 
 # Change geom_texas crs to match roads' crs with st_transform()
-geom_texas <- st_transform(sf_geom_texas, st_crs(roads))
+geom_texas <- st_transform(geom_texas, st_crs(roads))
+
 ```
 
 Final CRS Check
@@ -135,12 +145,12 @@ crs_check(houses, geom_texas)
 
 ```{r}
 # Combine the geometry (geom_texas) with the attributes (soc_texas) 
-print(dim(geom_texas))
-print(dim(soc_texas))
+#print(dim(geom_texas))
+#print(dim(soc_texas))
 
 # Joining Texas's Socioeconomic df and geometries
-texas_df <- cbind(geom_texas, soc_texas)
-print(dim(texas_df))
+#texas_df <- cbind(geom_texas, soc_texas)
+#print(dim(texas_df))
 ```
 
 # Create blackout mask
@@ -155,8 +165,11 @@ Create a raster object for each day
 
 ```{r}
 # Combine light data based on y
-feb7sf <- c(light_1, light_2, along = "y")
-feb16sf <- c(light_3, light_4, along = "y")
+#feb7sf <- c(light_1, light_2, along = "y")
+#feb16sf <- c(light_3, light_4, along = "y")
+
+feb7sf <- st_mosaic(light_1, light_2)
+feb16sf <- st_mosaic(light_3, light_4)
 
 # Check if extents match 
 print(st_bbox(feb7sf))
@@ -164,7 +177,8 @@ print(st_bbox(feb16sf))
 
 # Difference of the two days that are greater than 200 = blackouts
 # Creating a list of boolean operators 
-difference <- (feb16sf - feb7sf) > 200
+difference <- (feb7sf - feb16sf) > 200
+  # returns TRUES for more than 200; FALSE for less than 200 
 
 ```
 
@@ -201,10 +215,12 @@ diff_mask_vec <- st_make_valid(diff_mask_vec)
 
 # Create the houston bounding box 
 bound_box <- st_bbox(c(xmin =-96.5, xmax = -94.5, ymax = 30.5, ymin = 29), crs = st_crs(difference_mask))
+  # bound_box <- st_as_sf(bound_box)
+
 
 # Crop difference vector with the bounding box 
 diff_crop <- st_crop(diff_mask_vec, bound_box)
-#diff_crop <- difference_mask[bound_box, op = st_intersects]
+  #diff_crop <- difference_mask[bound_box, op = st_intersects]
 
 ```
 
@@ -221,7 +237,9 @@ diff_crop_epsg <- st_transform(diff_crop, crs = 'EPSG:3083')
 # Plot it! 
 tm_shape(diff_crop_epsg) + 
   tm_polygons(col = "firebrick4") + 
-  tm_basemap("OpenStreetMap") +
+  tm_shape(roads_union) + 
+  tm_lines() +
+  tm_basemap("CartoDB.PositronNoLabels") +
   tm_title(text = "All Backouts in Houston, TX")
 ```
 
@@ -252,7 +270,7 @@ plot(feb16sf) # bins: 0, 5000, 10000, 15000, 20000, 25000
 Identify areas within 200m of all highways
 
 ```{r}
-# Unionize road data to make it more managable 
+# Unionize road data to make it more manageable - Aggregating road data 
 roads_union <- st_union(roads)
 
 # Buffer areas within 200 m of all highways 
@@ -272,7 +290,8 @@ Areas that experienced blackouts that are further than 200m from a highway
 crs_check(road_buffer, diff_crop)
 
 # Locating all blackouts NOT within the 200m highway buffer 
-blackouts_200m_highway <- st_difference(diff_crop, road_buffer)
+blackouts_200m_highway <- st_difference(diff_crop , road_buffer) 
+#blackouts_200m_highway <- st_difference(diff_mask_vec , road_buffer)
 
 # Plot it 
 tm_shape(blackouts_200m_highway) + 
@@ -299,7 +318,8 @@ houses <- st_make_valid(houses)
 diff_crop <- st_make_valid(diff_crop)
 
 # Homes that experienced  blackouts 
-home_blackout <- st_filter(diff_crop, houses, .predicate = st_contains)
+home_blackout <- st_filter(diff_crop, houses, .predicate = st_intersects)
+  # st_intersects 
 
 ```
 
@@ -327,15 +347,39 @@ tm_shape(home_blackout) +
 
 
 # Comparing Blackouts with Cenus Track data 
+-  income data = income_texas 
+-  texas geometeries = geom_texas
 
+Pull layers 1 (geom) and 2 (income) out of the data - did when pulling out the data 
+Left Join layers 1 and 2 on GEOID 
+Manipulation - CRS check / transform 
+st_join with blackout house data 
+data wrangle to summarise means income by census tract 
+
+Join Texas geometries and income data layers 
 ```{r}
-#tm_shape(texas_df) +
-  #tm_polygons(fill = 'B01001m12') + 
-  #tm_shape(diff_crop, is.main = TRUE)
+# Left join geom and incomes 
+texas_df <- left_join(geom_texas, income_texas, by = 'GEOID')
 
+# Check CRS 
+st_crs(texas_df)
 
 ```
 
+Merge with house data 
+```{r}
+# Check CRS 
+crs_check(texas_df, home_blackout)
 
+# Transfrom CRS 
+
+# st_join(
+st_join()
+)
+
+```
+
+Layer 1 and Layer 2 with 
+left join - 
 
 
