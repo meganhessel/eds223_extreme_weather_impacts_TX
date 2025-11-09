@@ -25,6 +25,8 @@ library(raster)
 
 
 ```{r}
+#| output: FALSE
+
 # Download Data 
 
 # Night lights data (VNP46A1)
@@ -75,10 +77,10 @@ geom_texas <- vect("data/ACS_2019_5YR_TRACT_48_TEXAS.gdb", layer = "ACS_2019_5YR
 ```{r}
 #| output: False 
 
-st_crs(light_1) # WGS 84 
-st_crs(light_2) # WGS 84
-st_crs(light_3) # WGS 84
-st_crs(light_4) # WGS 84
+st_crs(l1) # WGS 84 
+st_crs(l2) # WGS 84
+st_crs(l3) # WGS 84
+st_crs(l4) # WGS 84
 
 st_crs(roads) # WGS 84
 st_crs(houses) # WGS 84
@@ -101,9 +103,9 @@ crs_check(roads, geom_texas)
 crs_check(houses, geom_texas)
 
 # Check crs between all the light dfs 
-crs_check(light_1, light_2)
-crs_check(light_1, light_3)
-crs_check(light_1, light_4)
+crs_check(l1, l2)
+crs_check(li1, l3)
+crs_check(l1, light_4)
 crs_check(light_2, light_3)
 crs_check(light_2, light_4)
 crs_check(light_3, light_4)
@@ -154,6 +156,10 @@ print(dim(texas_df))
 
 Create a raster object for each day
 **Combine** light data by date - Feb 7 and 16 For stars() light data
+```{r}
+
+
+```
 
 
 **Create Mask & Subset** for Blackout Regions that are greater than 200

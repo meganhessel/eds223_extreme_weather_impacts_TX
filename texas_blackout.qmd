@@ -6,9 +6,11 @@ format: html
 ## Downloading libraries and data
 
 ```{r}
-# Import libraries 
 #| message: false
 #| warning: false
+#| output: false
+
+# Import libraries 
 library(terra) # raster handling
 library(tidyverse)
 library(tmap) # map making
@@ -21,6 +23,8 @@ library(raster)
 ```
 
 ```{r}
+#| output: false
+
 # Download Data 
 
 # Night lights data (VNP46A1)
@@ -50,28 +54,16 @@ houses <- st_read(
        OR type IN ('residential', 'apartments', 'house', 'static_caravan', 'detached')
   ")
 
-# Socioecomic Data... TEXAS 
-soc_texas <- read_sf(here::here("data", "ACS_2019_5YR_TRACT_48_TEXAS.gdb"))
 
 # Texas geometries (polygons) 
+
 # Looking at the various layeres 
 st_layers(here::here("data", "ACS_2019_5YR_TRACT_48_TEXAS.gdb"))
-# Pulling out the geometry layer 
-#geom_texas <- vect("data/ACS_2019_5YR_TRACT_48_TEXAS.gdb", layer = "ACS_2019_5YR_TRACT_48_TEXAS")
-#income_texas <- vect("data/ACS_2019_5YR_TRACT_48_TEXAS.gdb", layer = "X19_INCOME")
 
+# Pulling out the geometry and income layers 
 geom_texas <- st_read(here::here("data/ACS_2019_5YR_TRACT_48_TEXAS.gdb"), layer = "ACS_2019_5YR_TRACT_48_TEXAS")
 income_texas <- st_read(here::here("data/ACS_2019_5YR_TRACT_48_TEXAS.gdb"), layer = "X19_INCOME")
 
-
-
-# <- st_read(here::here("data/ACS_2019_5YR_TRACT_48_TEXAS.gdb"), layer = "ACS_2019_5YR_TRACT_48_TEXAS"))
-
-```
-
-```{r}
-# Look at light data 
-plot(light_1)
 ```
 
 ## Coordinate Reference Systems
@@ -101,6 +93,7 @@ crs_check <- function(crs1, crs2) {
   }
 }
 
+
 # Check crs between roads, houses, and TX' geom
 crs_check(roads, houses)
 crs_check(roads, geom_texas)
@@ -114,16 +107,12 @@ crs_check(light_2, light_3)
 crs_check(light_2, light_4)
 crs_check(light_3, light_4)
 
-# Need to change geom_texas and income_texas to match the others 
+# Need to change geom_texas to match the others 
 ```
 
 ### Transforming CRS
 
 ```{r}
-# Convert SpatVector to sf 
-sf_geom_texas <- st_as_sf(geom_texas) 
-
-
 # Change geom_texas crs to match roads' crs with st_transform()
 geom_texas <- st_transform(geom_texas, st_crs(roads))
 
@@ -138,36 +127,18 @@ crs_check(roads, geom_texas)
 crs_check(houses, geom_texas)
 ```
 
-## Joining Texas Data
+# Create Blackout Mask
 
-### Combine Geometry with the ACS
-(American Community Survey data)
+-   2021-02-07: light_1 and light_2
 
-```{r}
-# Combine the geometry (geom_texas) with the attributes (soc_texas) 
-#print(dim(geom_texas))
-#print(dim(soc_texas))
+-   2021-02-16: light_3 and light_4
 
-# Joining Texas's Socioeconomic df and geometries
-#texas_df <- cbind(geom_texas, soc_texas)
-#print(dim(texas_df))
-```
+Create a raster object for each day:
 
-# Create blackout mask
-
--   2021-02-07: l1 and l2
-
--   2021-02-16: l3 and l4
-
-Create a raster object for each day
-
-**Combine** light data by date - Feb 7 and 16 For stars() light data
+**Combine** the 2 light tiles by date - Feb 7 and 16
 
 ```{r}
 # Combine light data based on y
-#feb7sf <- c(light_1, light_2, along = "y")
-#feb16sf <- c(light_3, light_4, along = "y")
-
 feb7sf <- st_mosaic(light_1, light_2)
 feb16sf <- st_mosaic(light_3, light_4)
 
@@ -175,21 +146,31 @@ feb16sf <- st_mosaic(light_3, light_4)
 print(st_bbox(feb7sf))
 print(st_bbox(feb16sf))
 
+
+# Remove the light objects 
+rm(list = c('light_1', 'light_2', 'light_3', 'light_4'))
+```
+
+Find where there were blackouts (with a power difference that's greater than 200 nW cm^-2^sr^-1^ )
+
+```{r}
 # Difference of the two days that are greater than 200 = blackouts
 # Creating a list of boolean operators 
 difference <- (feb7sf - feb16sf) > 200
   # returns TRUES for more than 200; FALSE for less than 200 
-
 ```
 
 **Create Mask & Subset** for Blackout Regions that are greater than 200
 
 ```{r}
 # Create raster mask of the same resolution and extent  
-difference_mask <- difference
+diff_mask <- difference
 
 # Assign NA to all locations that experienced a drop of less than 200 nW cm-2sr-1 change ("FALSE")
-difference_mask[difference_mask == "FALSE" ] <- NA 
+diff_mask[diff_mask == "FALSE" ] <- NA 
+
+# Remove the difference object 
+rm(difference)
 
 ```
 
@@ -199,7 +180,7 @@ difference_mask[difference_mask == "FALSE" ] <- NA
 #| output: False 
 
 # Convert from a raster to a vector with st_as_sf
-diff_mask_vec <- st_as_sf(difference_mask)
+diff_mask_vec <- st_as_sf(diff_mask)
 
 # Invalid geometries 
 which(!st_is_valid(diff_mask_vec)) # Tell us which specific ones are invalid 
@@ -212,15 +193,15 @@ diff_mask_vec <- st_make_valid(diff_mask_vec)
 **Crop** (spatially subset) the blackout mask to the Houston area
 
 ```{r}
+#| warning: false
 
-# Create the houston bounding box 
-bound_box <- st_bbox(c(xmin =-96.5, xmax = -94.5, ymax = 30.5, ymin = 29), crs = st_crs(difference_mask))
-  # bound_box <- st_as_sf(bound_box)
+# Create the Houston bounding box 
+bound_box <- st_bbox(c(xmin =-96.5, xmax = -94.5, ymax = 30.5, ymin = 29), crs = st_crs(diff_mask))
 
 
 # Crop difference vector with the bounding box 
 diff_crop <- st_crop(diff_mask_vec, bound_box)
-  #diff_crop <- difference_mask[bound_box, op = st_intersects]
+  # ANOTHER WAY: diff_crop <- difference_mask[bound_box, op = st_intersects]
 
 ```
 
@@ -231,59 +212,86 @@ diff_crop <- st_crop(diff_mask_vec, bound_box)
 diff_crop_epsg <- st_transform(diff_crop, crs = 'EPSG:3083')
 ```
 
-**Plot**
+**Plot!**
 
 ```{r}
+#| warning: false 
+
+# Want to Map Houston's light difference data with the road data 
+
+# Unionize / Aggregating road data to make it more manageable 
+road_union <- st_union(roads)
+
 # Plot it! 
 tm_shape(diff_crop_epsg) + 
-  tm_polygons(col = "firebrick4") + 
-  tm_shape(roads_union) + 
+  tm_polygons(col = "firebrick") + 
+  tm_shape(road_union) + 
   tm_lines() +
   tm_basemap("CartoDB.PositronNoLabels") +
-  tm_title(text = "All Backouts in Houston, TX")
+  tm_title(text = "All Blackouts in Houston, TX During Winter Storm Uri") + 
+  tm_compass(position = c("left", "bottom")) + 
+  tm_scalebar(position = c("left", "bottom")) + 
+  tm_credits("Figure 1", position = c("right", "bottom"))
 ```
 
-Create **Before and After** plots - need to go back and do this !!!!
+**Before and After** plots
 
 A set of maps comparing night light intensities before and after the first two storms
 
 ```{r}
-library(gridExtra)
+#| warning: false 
 
-plot(feb7sf) # bins: 0, 1000, 1500, 3000, 4000, 5000
-plot(feb16sf) # bins: 0, 5000, 10000, 15000, 20000, 25000 
+# Make it houston extent with "bound_box"
+feb7sf_houston <- st_crop(feb7sf, bound_box)
+feb16sf_houston <- st_crop(feb16sf, bound_box)
 
+# Remove un-cropped Feb 7 and 16 light data
+rm(list = c('feb7sf', 'feb16sf'))
 
-#tm_shape(feb7sf) + 
-  #tm_raster(breaks = c(0, 1000, 1500, 3000, 4000, 5000))
-
-#tm_shape(feb16sf) + 
-  #tm_raster(breaks = c(0, 5000, 10000, 15000, 20000, 25000 ))
+# Create the map 
+feb7map <- tm_shape(feb7sf_houston) + 
+  tm_raster(breaks = c(0, 500, 1000, 1500, 2500, 3500, 5000), 
+            palette = "greys", 
+            title = "Light Intensity (nW cm-2sr-1)") + 
+  tm_title(text = "Feb 7 Houston, TX Night Light") + 
+  tm_compass(position = c("left", "top"))
   
 
-#grid.arrange(map1, map2, ncol=2)
+feb16map <- tm_shape(feb16sf_houston) + 
+  tm_raster(breaks = c(0, 500, 1000, 3000, 5000, 10000, 20000), 
+            palette = "greys", 
+            title = "Light Intensity (nW cm-2sr-1)" ) + 
+  tm_title(text = "Feb 16 Houston, TX Night Light") + 
+  tm_scale_bar(position = c("right", "top")) + 
+  tm_credits("Figure 2")
+
+
+tmap_arrange(feb7map, feb16map, outer.margins = 0.03)
 
 ```
 
-# Exclude highways from the cropped blackout mask
+# Exclude Highways from the Mask
 
-Identify areas within 200m of all highways
+Identify areas within 200m of all highways with a buffer 
 
 ```{r}
+
 # Unionize road data to make it more manageable - Aggregating road data 
-roads_union <- st_union(roads)
+road_union <- st_union(roads) 
 
 # Buffer areas within 200 m of all highways 
-road_buffer <- st_buffer(roads_union, dist = units::set_units(200, "m"))
+road_buffer <- st_buffer(road_union, dist = units::set_units(200, "m"))
 
 # Look at the Road buffer
 plot(road_buffer)
 
 ```
 
-Areas that experienced blackouts that are further than 200m from a highway
+Exclude the 200m highway/road buffer from the blackout area
 
 ```{r}
+#| warning: false 
+
 # Merge blackout areas with road buffer
 
 # Check if CRS match
@@ -291,27 +299,39 @@ crs_check(road_buffer, diff_crop)
 
 # Locating all blackouts NOT within the 200m highway buffer 
 blackouts_200m_highway <- st_difference(diff_crop , road_buffer) 
-#blackouts_200m_highway <- st_difference(diff_mask_vec , road_buffer)
 
 # Plot it 
 tm_shape(blackouts_200m_highway) + 
   tm_polygons(col = "firebrick") + 
+  tm_shape(road_union)+ 
+  tm_lines(col = "grey40") +
   tm_basemap("CartoDB.PositronNoLabels") +
-  tm_title(text = "Backouts 200m from the highways in Houston, TX")
+  tm_title(text = "Blackouts in Houston, TX (Excluding Highways)") + 
+  tm_compass(position = c("left", "bottom")) +
+  tm_scalebar(position = c("left", "bottom")) + 
+  tm_credits("Figure 3")
+
 
 ```
 
-# Homes impacted by blackouts
+# Homes Impacted by Blackouts
 
 Homes that overlap with areas that experienced blackouts
 
 ```{r}
 # Check crs 
-crs_check(houses, diff_crop)
+if(st_crs(houses) == st_crs(diff_crop)){ # Check if match 
+  print("CRS match!")
+  } else {
+  warning("Updating CRS to match")
+  
+  # Transform to match 
+  diff_crop <- st_transform(diff_crop, st_crs(houses))
+  }
 
 # Invalid geometries 
-which(!st_is_valid(houses))
-which(!st_is_valid(diff_crop))
+#which(!st_is_valid(houses))
+#which(!st_is_valid(diff_crop))
 
 # Fixing invalid geometries  
 houses <- st_make_valid(houses)
@@ -319,67 +339,317 @@ diff_crop <- st_make_valid(diff_crop)
 
 # Homes that experienced  blackouts 
 home_blackout <- st_filter(diff_crop, houses, .predicate = st_intersects)
-  # st_intersects 
 
 ```
 
+### **Estimate** of the number of homes in Houston that lost power
 
-Estimate of the number of homes in Houston that lost power
 ```{r}
 # Number of observations in the home_blackout raster 
 est <- ncell(home_blackout)
 
 print(paste("About", est, "of Houston homes lost power"))
 
+# Remove estimate object 
+rm(est)
 ```
 
+### **Mapping** Homes that experienced blackouts
 
-Mapping Homes that experienced blackouts
 ```{r}
+#| warning: false
+
+
 # Map it! 
 tm_shape(home_blackout) + 
-  tm_polygons() + 
+  tm_polygons(col = "chartreuse4") + 
   tm_basemap("CartoDB.PositronNoLabels") +
-  tm_title(text = "Homes that experienced blackouts in Houston, TX")
-
+  tm_title(text = "Homes that Experienced Blackouts in Houston, TX\nDuring Winter Strom Uri") + 
+  tm_compass(position = c("left", "bottom")) + 
+  tm_scalebar(position = c("left", "bottom")) + 
+  tm_credits("Figure 4")
 ```
 
+# Comparing Blackouts with Census Track Data
 
+Data frames that are needed for this task:
 
-# Comparing Blackouts with Cenus Track data 
--  income data = income_texas 
--  texas geometeries = geom_texas
+-   Texas income data = "income_texas"
+-   Texas geometries = "geom_texas"
 
-Pull layers 1 (geom) and 2 (income) out of the data - did when pulling out the data 
-Left Join layers 1 and 2 on GEOID 
-Manipulation - CRS check / transform 
-st_join with blackout house data 
-data wrangle to summarise means income by census tract 
+Important income columns:
 
-Join Texas geometries and income data layers 
+-   19013e1: median household income in the past 12 months
+
+-   19052e1: wage or salary income in the past 12 months for households
+
+**Join** Texas geometries and income data layers
+
+=\> a data frame of all Texas income and geometry data = "texas_df"
+
 ```{r}
-# Left join geom and incomes 
-texas_df <- left_join(geom_texas, income_texas, by = 'GEOID')
+#| output: false 
 
-# Check CRS 
-st_crs(texas_df)
+# Looking at dataframes 
+print(dim(geom_texas))
+print(dim(income_texas))
 
+# Join Texas geom and incomes 
+texas_df <- cbind(geom_texas, income_texas) 
+# Know dfs will line up b/c they are different layers of the same data 
+# ANOTHER WAY: LEFT JOIN: texas_df <- left_join(geom_texas, income_texas)
+
+# Print new df's dimensions - see if the joined worked
+print(dim(texas_df))
+
+# Remove un-joined dfs 
+rm(list = c('geom_texas', 'income_texas'))
 ```
 
-Merge with house data 
+**Merge** Texas data (containing income + geom) with house blackout data
+
+\(1\) Data frame with homes that DID experienced a blackout and their income = "income_bo_homes"
+
+\(2\) Data frame with homes that did NOT experienced a blackout and their income = "income_NO_bo_homes"
+
 ```{r}
-# Check CRS 
-crs_check(texas_df, home_blackout)
+# Checking crs 
 
-# Transfrom CRS 
-
-# st_join(
-st_join()
-)
+if(st_crs(texas_df) == st_crs(home_blackout)){ # Check if match 
+  print("CRS match!")
+  } else {
+  warning("Updating CRS to match")
+  # Transform to match 
+  texas_df <- st_transform(texas_df, crs = st_crs(home_blackout))
+  }
 
 ```
 
-Layer 1 and Layer 2 with 
-left join - 
+*Filter* for homes that did and did not experience blackouts in census data
+
+(1) Homes that DID experience blackouts
+```{r}
+# (1) st_filter for homes experiencing BOs
+income_bo_homes <- st_filter(texas_df, home_blackout, .predicate = st_intersects) %>% 
+  mutate(blackout = "TRUE") # Adding a column pertaining to experiencing a BO 
+
+```
+
+(2) Homes that did NOT experience blackouts
+```{r}
+# (a) Look for areas of intersections 
+idx_intersect <- st_intersects(texas_df, home_blackout, sparse = FALSE)
+# Build a logical matrix (sparse = false) of boolean operators (TRUE and FALSES) that explains which geometries between x and y intersect
 
 
+# (b) Looking for areas NOT included in the intersection data 
+income_NO_bo_homes <- texas_df[!apply(idx_intersect, 1, any), ] %>% 
+  mutate(blackout = "FALSE") # Adding a column pertaining to NOT experiencing a BO 
+  # Loops over all rows to see if there is a any "TRUE" or "FALSE" values in every row 
+  # ! keeps only rows with no intersection 
+
+
+# PROBLEMS: DID NOT WORK (happened to a lot of people)
+# st_disjoint(texas_df, home_blackout)
+# st_filter(texas_df, home_blackout, .predicate = st_disjoint)
+  # Because "disjoint" is saying: Keep all features in texas_df that are disjoint (do not touch or overlap) with at least ONE feature in home_blackout... not all ??
+
+
+# Look at shapes - See if filtering worked... it did! 
+print(dim(texas_df))
+print(dim(home_blackout))
+print(dim(income_bo_homes))
+print(dim(income_NO_bo_homes))
+
+
+# Remove intermediate 'idx_intersect' df 
+rm(idx_intersect)
+```
+
+**Visualizing** income and blackouts spatially
+
+Visually checking to see if filtering homes worked 
+```{r}
+#| warning: false
+
+# Create my color palette 
+my_palette = c('#488f30', '#a9bb5a', '#ffe896', '#ffad76', '#fc7082') 
+
+
+# Map of mean (of median) income with no blackouts 
+no_blackout_income_map <- tm_shape(income_NO_bo_homes) + 
+  tm_polygons(fill = "B19013e1", 
+              fill.legend = tm_legend(title = "Median Income"), 
+              fill.scale = tm_scale(breaks = c(0, 50000, 100000, 150000, 200000, 300000), 
+                                    values = my_palette)) +
+    tm_shape(diff_crop, is.main = TRUE) + 
+  tm_title(text = "Medium Income Cenus Track for Homes with Power") +   
+  tm_compass(position = c('right', 'bottom'))
+
+
+# Map of mean (of median) incomes of home that experienced blackouts 
+blackout_income_map <- tm_shape(income_bo_homes) + 
+  tm_polygons(fill = "B19013e1", 
+              fill.legend = tm_legend(title = "Median Income"), 
+               fill.scale = tm_scale(breaks = c(0, 50000, 100000, 150000, 200000, 300000), 
+                                     values = my_palette)) +
+  tm_shape(diff_crop, is.main = TRUE) + 
+  tm_title(text = "Medium Income Cenus Track for Homes without Power") + 
+  tm_scalebar(position = c('left', 'bottom')) 
+
+# Look at both together 
+tmap_arrange(no_blackout_income_map, blackout_income_map)
+```
+
+A map of the census tracts in Houston that lost power
+```{r}
+#| warning: false
+
+tm_shape(income_bo_homes) + 
+  tm_polygons(fill = "B19013e1", 
+              palette = my_palette ,
+              title = "Median Income that\nExperienced Blackouts", 
+              breaks = c(0, 50000, 100000, 150000, 200000, 300000)) + 
+  tm_compass(position = c(1.02, 0.4)) + 
+  tm_scalebar(position = c(1.14, 0.4)) + 
+  tm_title(text = "Median Income Census Tracts in Houston, TX\nthat Lost Power During Winter Storm Uri") + 
+  tm_credits("Figure 5")
+
+```
+
+**Plotting** homes experiences blackouts vs not
+
+```{r}
+#| warning: false 
+
+# Merge mean income blackouts and no blackout dataframes 
+income_merge <- rbind(income_NO_bo_homes, income_bo_homes)
+
+# Histogram 
+ggplot(income_merge, 
+       aes(x = B19013e1, 
+           fill = blackout)) + 
+  geom_histogram()+ 
+  scale_fill_manual(labels = c("No Blackout", "Blackout"),
+                    values = c("#ffaf50", "#488f30")) +
+  labs(x = "Median Household Income", 
+       fill = "Experienced a Blackout", 
+       title = "Counts of Median Household Incomes\nthat did and did not Experience Blackouts", 
+       y = 'Count',
+       caption = "Figure 6") + 
+  theme_bw()
+
+
+# Boxplot
+ggplot(income_merge, 
+       aes(y = B19013e1,
+           x = blackout,
+           fill = blackout)) + 
+  geom_boxplot(outlier.size =0.2, 
+               outlier.color = 'grey60')+ 
+  scale_fill_manual(labels = c("No Blackout", "Blackout"),
+                    values = c("#ffaf50", "#488f30")) +
+  labs(fill = "Experienced a Blackout", 
+       title = "Median Household Incomes that\ndid and did not Experience Blackouts",
+       caption = "Figure 7", 
+       y = "Median Incomes", 
+       x = "Blackout Experience") + 
+  theme_bw()
+
+```
+
+*Income class* that did and did not experienced a blackout
+
+```{r}
+# Select only needs columns and drop geometry 
+income_class <- income_merge[, c('GEOID', 'B19013e1', 'blackout')] %>% 
+  st_drop_geometry() 
+
+
+# Add new column based on median income for INCOME CLASSES 
+income_class <- income_class %>% 
+  mutate(class = case_when(
+    is.na(B19013e1) ~ NA_character_, 
+    B19013e1 < 40000 ~ "lower_class", 
+    B19013e1 < 125000 ~ "middle_class",
+    TRUE ~ "upper_class" # All others are upper class 
+  ) )
+
+
+# Count of homes experiencing blackouts vs not per income class 
+income_class_sum <- income_class %>% 
+  group_by(class, blackout) %>% 
+  summarise(count = n()) 
+
+
+# Plot it 
+ggplot(income_class_sum, 
+       aes(x = class, 
+           y = count, 
+           fill = blackout)) + 
+  geom_col(position = "dodge", 
+           color = "black") + 
+  scale_fill_manual(labels = c("No Blackout", "Blackout"),
+                    values = c("#ffad76", "#488f30")) + 
+  labs(title = "Total Households Count that did and did not\nExperienced Blackouts in Various Income Classes ", 
+       x = "Income Classes", 
+       y = "Counts", 
+       fill = "Experienced Blackout", 
+       caption = "Figure 7:\nLower income class is below $50,000.\nMiddle class is $50,000 to $110,000.\n Upper class is greater than $110,000.") +
+  theme_bw()
+
+```
+
+*Proportion* of Income Classes that Experienced a Blackout - Didnt finish this 
+
+```{r}
+
+# Filters for home counts that experiences a blackout 
+class_count_blackout <- income_class_sum %>% 
+  filter(blackout == 'TRUE')
+
+# Total of homes per each income class 
+class_count_total <- income_class_sum %>% 
+  group_by(class) %>% 
+  summarise(total = sum(count))
+
+# Combine dataframes 
+class_count <- left_join(class_count_blackout, class_count_total, by ='class')
+
+# Proportions of homes that experiences a blackout per Income Class 
+class_prop <- class_count %>% 
+  group_by(class) %>% 
+  summarise(prop = count/total)
+
+# Creating a kable table 
+knitr::kable(class_prop, 
+                      col.names = c("Income Class", "Proportion"),
+                      digits = 2, 
+                      caption = "Proportion of Income Classes that Experiences a Blackout")
+
+
+
+```
+
+
+## Conclusion 
+
+On February 11-20 2021, Winter Storm Uri hit Texas. Uri brought freezing temperatures and precipitation that broke Texas records for the longest freezing streak (1). As temperatures plummeted, power went out across the South, pipes burst, roads iced over, and countless accidents followed (1). Millions of people (more than 2 out of 3 people) were left in the dark and cold with no access to power or a heater (2).
+
+In Houston, Texas, the power outage centered around the downtown area which is seen in Figure 1, 3, and 4. Figure 6 illustrates the most common median income of the time, $50,000, experiences the most blackouts. The distribution of blackouts seems to be consistent with the medium income distribution in Houston. Lower and Middle income classes experiences the most blackouts (Figure 7) with about 16.5% of each class with no power. Where as about 13% of the Upper Class face blackouts. 
+
+
+
+### Personal Statement 
+I am from Houston, Texas! I was present during Winter Storm Uri. My father and I were powerless in our home while my mom (Dr. Hessel) was stuck on-call in the hospital for a couple of days. It was a crazy week with no power, pipes bursting, being locked inside, and no school. 
+
+
+freezing over the Loanstar state. The freeze caused power outages across the South,
+
+Citations:
+
+-    <https://www.fox26houston.com/news/houston-middle-class-texas-2025> 
+
+-   <https://www.ncei.noaa.gov/news/great-texas-freeze-february-2021>
+
+-   <https://www.uh.edu/hobby/winter2021/storm.pdf>
