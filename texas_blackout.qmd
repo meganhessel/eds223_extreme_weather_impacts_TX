@@ -1,7 +1,10 @@
 ---
-title: "extreme_weather_TX"
+title: "Winter Storm Uri in Houston TX"
 format: html
 ---
+# Winter Storm Uri in Houston, Texas
+
+Investigating blackout data from Winter Storm Uri and comparing to Median Income Census Track data. 
 
 ## Downloading libraries and data
 
@@ -15,8 +18,6 @@ library(terra) # raster handling
 library(tidyverse)
 library(tmap) # map making
 library(kableExtra) # table formatting
-library(spData) # spatial data
-library(spDataLarge) # spatial data
 library(geodata) # spatial data
 library(stars)
 library(raster)
@@ -41,7 +42,7 @@ light_4 <- read_stars(here::here("data", "VNP46A1", "VNP46A1.A2021047.h08v06.001
 #l4 <- rast("data/VNP46A1/VNP46A1.A2021047.h08v06.001.2021048091105.tif")
 
 
-# Road Data 
+# Road Data - just 'moterways'
 roads <- st_read(here::here("data", "gis_osm_roads_free_1.gpkg"), query = "SELECT * FROM gis_osm_roads_free_1 WHERE fclass='motorway'")
 
 # House data 
@@ -55,7 +56,7 @@ houses <- st_read(
   ")
 
 
-# Texas geometries (polygons) 
+# Texas Data 
 
 # Looking at the various layeres 
 st_layers(here::here("data", "ACS_2019_5YR_TRACT_48_TEXAS.gdb"))
@@ -84,7 +85,7 @@ st_crs(geom_texas) # NAD83 *** NEEDS TO MATCH THE OTHERS **
 ```
 
 ```{r}
-# Create warning message function to check crs 
+# Create print message function to check crs 
 crs_check <- function(crs1, crs2) {
   if (st_crs(crs1) == st_crs(crs2)) {
     print("its a match")
@@ -121,10 +122,8 @@ geom_texas <- st_transform(geom_texas, st_crs(roads))
 Final CRS Check
 
 ```{r}
-# Check crs between roads, houses, and TX' geom
-crs_check(roads, houses)
+# Check crs between roads, and TX' geom
 crs_check(roads, geom_texas)
-crs_check(houses, geom_texas)
 ```
 
 # Create Blackout Mask
@@ -198,7 +197,6 @@ diff_mask_vec <- st_make_valid(diff_mask_vec)
 # Create the Houston bounding box 
 bound_box <- st_bbox(c(xmin =-96.5, xmax = -94.5, ymax = 30.5, ymin = 29), crs = st_crs(diff_mask))
 
-
 # Crop difference vector with the bounding box 
 diff_crop <- st_crop(diff_mask_vec, bound_box)
   # ANOTHER WAY: diff_crop <- difference_mask[bound_box, op = st_intersects]
@@ -217,7 +215,7 @@ diff_crop_epsg <- st_transform(diff_crop, crs = 'EPSG:3083')
 ```{r}
 #| warning: false 
 
-# Want to Map Houston's light difference data with the road data 
+# Want to Map Houston's light difference data (with the road data for clarity)
 
 # Unionize / Aggregating road data to make it more manageable 
 road_union <- st_union(roads)
@@ -248,7 +246,7 @@ feb16sf_houston <- st_crop(feb16sf, bound_box)
 # Remove un-cropped Feb 7 and 16 light data
 rm(list = c('feb7sf', 'feb16sf'))
 
-# Create the map 
+# Create the maps! 
 feb7map <- tm_shape(feb7sf_houston) + 
   tm_raster(breaks = c(0, 500, 1000, 1500, 2500, 3500, 5000), 
             palette = "greys", 
@@ -272,7 +270,7 @@ tmap_arrange(feb7map, feb16map, outer.margins = 0.03)
 
 # Exclude Highways from the Mask
 
-Identify areas within 200m of all highways with a buffer 
+Identify areas within 200m of all highways with a buffer
 
 ```{r}
 
@@ -306,7 +304,7 @@ tm_shape(blackouts_200m_highway) +
   tm_shape(road_union)+ 
   tm_lines(col = "grey40") +
   tm_basemap("CartoDB.PositronNoLabels") +
-  tm_title(text = "Blackouts in Houston, TX (Excluding Highways)") + 
+  tm_title(text = "Blackouts in Houston, TX (Excluding Highways)\nDuring Winter Storm Uri") + 
   tm_compass(position = c("left", "bottom")) +
   tm_scalebar(position = c("left", "bottom")) + 
   tm_credits("Figure 3")
@@ -364,6 +362,9 @@ rm(est)
 tm_shape(home_blackout) + 
   tm_polygons(col = "chartreuse4") + 
   tm_basemap("CartoDB.PositronNoLabels") +
+  tm_shape(road_union)+ 
+  tm_lines(col = "grey20", 
+           alpha = 0.3) +
   tm_title(text = "Homes that Experienced Blackouts in Houston, TX\nDuring Winter Strom Uri") + 
   tm_compass(position = c("left", "bottom")) + 
   tm_scalebar(position = c("left", "bottom")) + 
@@ -425,9 +426,10 @@ if(st_crs(texas_df) == st_crs(home_blackout)){ # Check if match
 
 ```
 
-*Filter* for homes that did and did not experience blackouts in census data
+**Filter** for homes that did AND did not experience blackouts (BOs) in census data
 
 (1) Homes that DID experience blackouts
+
 ```{r}
 # (1) st_filter for homes experiencing BOs
 income_bo_homes <- st_filter(texas_df, home_blackout, .predicate = st_intersects) %>% 
@@ -436,6 +438,7 @@ income_bo_homes <- st_filter(texas_df, home_blackout, .predicate = st_intersects
 ```
 
 (2) Homes that did NOT experience blackouts
+
 ```{r}
 # (a) Look for areas of intersections 
 idx_intersect <- st_intersects(texas_df, home_blackout, sparse = FALSE)
@@ -468,7 +471,8 @@ rm(idx_intersect)
 
 **Visualizing** income and blackouts spatially
 
-Visually checking to see if filtering homes worked 
+Visually checking to see if filtering homes worked
+
 ```{r}
 #| warning: false
 
@@ -495,13 +499,15 @@ blackout_income_map <- tm_shape(income_bo_homes) +
                                      values = my_palette)) +
   tm_shape(diff_crop, is.main = TRUE) + 
   tm_title(text = "Medium Income Cenus Track for Homes without Power") + 
-  tm_scalebar(position = c('left', 'bottom')) 
+  tm_scalebar(position = c('left', 'bottom')) + 
+  tm_credits(text = "Figure 5", position = c(0.7, -0.05))
 
 # Look at both together 
 tmap_arrange(no_blackout_income_map, blackout_income_map)
 ```
 
 A map of the census tracts in Houston that lost power
+
 ```{r}
 #| warning: false
 
@@ -510,10 +516,10 @@ tm_shape(income_bo_homes) +
               palette = my_palette ,
               title = "Median Income that\nExperienced Blackouts", 
               breaks = c(0, 50000, 100000, 150000, 200000, 300000)) + 
-  tm_compass(position = c(1.02, 0.4)) + 
-  tm_scalebar(position = c(1.14, 0.4)) + 
-  tm_title(text = "Median Income Census Tracts in Houston, TX\nthat Lost Power During Winter Storm Uri") + 
-  tm_credits("Figure 5")
+  tm_compass(position = c(1.02, 0.5)) + 
+  tm_scalebar(position = c(1.14, 0.5)) + 
+  tm_title(text = "Median Income Census Tracts in Houston, TX that\nExperienced a Blackout During Winter Storm Uri") + 
+  tm_credits("Figure 6")
 
 ```
 
@@ -536,7 +542,7 @@ ggplot(income_merge,
        fill = "Experienced a Blackout", 
        title = "Counts of Median Household Incomes\nthat did and did not Experience Blackouts", 
        y = 'Count',
-       caption = "Figure 6") + 
+       caption = "Figure 7") + 
   theme_bw()
 
 
@@ -546,21 +552,24 @@ ggplot(income_merge,
            x = blackout,
            fill = blackout)) + 
   geom_boxplot(outlier.size =0.2, 
-               outlier.color = 'grey60')+ 
+               outlier.color = 'grey30')+ 
   scale_fill_manual(labels = c("No Blackout", "Blackout"),
                     values = c("#ffaf50", "#488f30")) +
   labs(fill = "Experienced a Blackout", 
        title = "Median Household Incomes that\ndid and did not Experience Blackouts",
-       caption = "Figure 7", 
+       caption = "Figure 8", 
        y = "Median Incomes", 
        x = "Blackout Experience") + 
   theme_bw()
 
 ```
 
-*Income class* that did and did not experienced a blackout
+[*Income classes*]{.underline} that did and did not experienced a blackout
 
+Create a df with a new column specifying income CLASS 
 ```{r}
+#| warning: false
+
 # Select only needs columns and drop geometry 
 income_class <- income_merge[, c('GEOID', 'B19013e1', 'blackout')] %>% 
   st_drop_geometry() 
@@ -576,7 +585,7 @@ income_class <- income_class %>%
   ) )
 
 
-# Count of homes experiencing blackouts vs not per income class 
+# COUNTS of homes experiencing blackouts vs not per income class 
 income_class_sum <- income_class %>% 
   group_by(class, blackout) %>% 
   summarise(count = n()) 
@@ -591,16 +600,17 @@ ggplot(income_class_sum,
            color = "black") + 
   scale_fill_manual(labels = c("No Blackout", "Blackout"),
                     values = c("#ffad76", "#488f30")) + 
+  scale_x_discrete(labels = c('Lower Class', 'Middle Class', 'Upper Class', 'NAs')) +
   labs(title = "Total Households Count that did and did not\nExperienced Blackouts in Various Income Classes ", 
        x = "Income Classes", 
        y = "Counts", 
        fill = "Experienced Blackout", 
-       caption = "Figure 7:\nLower income class is below $50,000.\nMiddle class is $50,000 to $110,000.\n Upper class is greater than $110,000.") +
+       caption = "Figure 8:\nLower income class is below $40,000.\nMiddle class is $40,000 to $125,000.\n Upper class is greater than $125,000.") +
   theme_bw()
 
 ```
 
-*Proportion* of Income Classes that Experienced a Blackout - Didnt finish this 
+*Proportion* of Income Classes that Experienced a Blackout
 
 ```{r}
 
@@ -617,38 +627,43 @@ class_count_total <- income_class_sum %>%
 class_count <- left_join(class_count_blackout, class_count_total, by ='class')
 
 # Proportions of homes that experiences a blackout per Income Class 
-class_prop <- class_count %>% 
+class_count <- class_count %>% 
   group_by(class) %>% 
-  summarise(prop = count/total)
+  mutate(prop = 100*(count/total))
 
 # Creating a kable table 
-knitr::kable(class_prop, 
+knitr::kable(class_count[, c('class', 'prop')], 
                       col.names = c("Income Class", "Proportion"),
                       digits = 2, 
-                      caption = "Proportion of Income Classes that Experiences a Blackout")
+                      align = 'c',
+                      caption = "Percentage of each Income Class that Experienced a Blackout")
 
 
+# Remove unnecessary dfs 
+rm(list = c('class_count_blackout', 'class_count_total'))
 
 ```
 
+## Conclusion
 
-## Conclusion 
+On February 11-20, 2021, Winter Storm Uri hit Texas. Uri bright record-breaking cold and precipitation, leading to the longest stretch of freezing temperatures in Texas history (1). As temperatures plummeted, power went out across the South, pipes burst, roads iced over, and countless accidents followed (1). Millions of people (more than 2 out of 3 people) were left in the dark and cold with no access to power or a heater (2).
 
-On February 11-20 2021, Winter Storm Uri hit Texas. Uri brought freezing temperatures and precipitation that broke Texas records for the longest freezing streak (1). As temperatures plummeted, power went out across the South, pipes burst, roads iced over, and countless accidents followed (1). Millions of people (more than 2 out of 3 people) were left in the dark and cold with no access to power or a heater (2).
+In Houston, Texas, the power outage centered around the downtown area which is seen in Figures 1 - 5. Figures 6 - 8 investigate the power outages in comparison with income census blocks. The medium income distributions of people who experienced blackouts vs did not experience blackouts are very similar and consistent with the overall medium income distribution in Houston. Figure 7 and the Table illustrates the income classes having similar proportions of residents experiencing blackouts, ranging from about 12% to 16% for each class. Accordingly, there is insufficient evidence to suggest that the power outages during Winter Storm Uri were biased or unjustly distributed.
 
-In Houston, Texas, the power outage centered around the downtown area which is seen in Figure 1, 3, and 4. Figure 6 illustrates the most common median income of the time, $50,000, experiences the most blackouts. The distribution of blackouts seems to be consistent with the medium income distribution in Houston. Lower and Middle income classes experiences the most blackouts (Figure 7) with about 16.5% of each class with no power. Where as about 13% of the Upper Class face blackouts. 
+Limitations to the study 
 
 
 
-### Personal Statement 
-I am from Houston, Texas! I was present during Winter Storm Uri. My father and I were powerless in our home while my mom (Dr. Hessel) was stuck on-call in the hospital for a couple of days. It was a crazy week with no power, pipes bursting, being locked inside, and no school. 
 
+### Personal Statement
+
+I am from Houston, Texas! I was present during Winter Storm Uri. My father and I were powerless in our home while my mom (Dr. Hessel) was stuck on-call in the hospital for a couple of days. It was a crazy week with no power, pipes bursting, being locked inside, and no school.
 
 freezing over the Loanstar state. The freeze caused power outages across the South,
 
 Citations:
 
--    <https://www.fox26houston.com/news/houston-middle-class-texas-2025> 
+-   <https://www.fox26houston.com/news/houston-middle-class-texas-2025>
 
 -   <https://www.ncei.noaa.gov/news/great-texas-freeze-february-2021>
 
