@@ -1,8 +1,13 @@
 ---
-title: "Winter Storm Uri in Houston TX"
-format: html
+title: "eds223: Winter Storm Uri in TX"
+author: Megan Hessel
+date: Nov 10, 2025
+format:
+  pdf: default
+  html: default
+editor: visual
 ---
-# Winter Storm Uri in Houston, Texas
+# Impacts of Winter Storm Uri in Houston, Texas
 
 Investigating blackout data from Winter Storm Uri and comparing to Median Income Census Track data. 
 
@@ -237,36 +242,39 @@ tm_shape(diff_crop_epsg) +
 A set of maps comparing night light intensities before and after the first two storms
 
 ```{r}
-#| warning: false 
-
-# Make it houston extent with "bound_box"
+# Crop to Houston Texas bounding box 
 feb7sf_houston <- st_crop(feb7sf, bound_box)
 feb16sf_houston <- st_crop(feb16sf, bound_box)
 
-# Remove un-cropped Feb 7 and 16 light data
-rm(list = c('feb7sf', 'feb16sf'))
+# Mask to get rid of extremes 
+feb7sf_houston[feb7sf_houston < 200 | feb7sf_houston > 1000] <- NA 
+feb16sf_houston[feb16sf_houston < 200 | feb16sf_houston > 1000] <- NA
 
-# Create the maps! 
+# Map feb 7 and feb 16 
 feb7map <- tm_shape(feb7sf_houston) + 
-  tm_raster(breaks = c(0, 500, 1000, 1500, 2500, 3500, 5000), 
-            palette = "greys", 
-            title = "Light Intensity (nW cm-2sr-1)") + 
+  tm_raster(col.scale = tm_scale(values = "inferno"),
+            col.legend = tm_legend(title = "Light Intensity (nW cm-2sr-1)")) +
+            #title = "Light Intensity (nW cm-2sr-1)") + 
   tm_title(text = "Feb 7 Houston, TX Night Light") + 
-  tm_compass(position = c("left", "top"))
+  tm_compass(position = c("left", "bottom")) + 
+  tm_basemap("CartoDB.PositronNoLabels")
   
 
 feb16map <- tm_shape(feb16sf_houston) + 
-  tm_raster(breaks = c(0, 500, 1000, 3000, 5000, 10000, 20000), 
-            palette = "greys", 
-            title = "Light Intensity (nW cm-2sr-1)" ) + 
+  tm_raster(col.scale = tm_scale(values = "inferno"),
+            col.legend = tm_legend(title = "Light Intensity (nW cm-2sr-1)"))+
+            #title = "Light Intensity (nW cm-2sr-1)" ) + 
   tm_title(text = "Feb 16 Houston, TX Night Light") + 
-  tm_scale_bar(position = c("right", "top")) + 
-  tm_credits("Figure 2")
-
+  tm_scalebar(position = c("left", "bottom")) + 
+  tm_credits("Figure 2") + 
+  tm_basemap("CartoDB.PositronNoLabels")
 
 tmap_arrange(feb7map, feb16map, outer.margins = 0.03)
 
+# Get rid of unneccary dfs 
+rm(list = c('feb7sf', 'feb16sf'))
 ```
+
 
 # Exclude Highways from the Mask
 
@@ -488,7 +496,8 @@ no_blackout_income_map <- tm_shape(income_NO_bo_homes) +
                                     values = my_palette)) +
     tm_shape(diff_crop, is.main = TRUE) + 
   tm_title(text = "Medium Income Cenus Track for Homes with Power") +   
-  tm_compass(position = c('right', 'bottom'))
+  tm_compass(position = c('right', 'bottom')) + 
+  tm_basemap("Esri.WorldTopoMap")
 
 
 # Map of mean (of median) incomes of home that experienced blackouts 
@@ -500,7 +509,8 @@ blackout_income_map <- tm_shape(income_bo_homes) +
   tm_shape(diff_crop, is.main = TRUE) + 
   tm_title(text = "Medium Income Cenus Track for Homes without Power") + 
   tm_scalebar(position = c('left', 'bottom')) + 
-  tm_credits(text = "Figure 5", position = c(0.7, -0.05))
+  tm_credits(text = "Figure 5", position = c(0.7, -0.05)) + 
+  tm_basemap("Esri.WorldTopoMap")
 
 # Look at both together 
 tmap_arrange(no_blackout_income_map, blackout_income_map)
@@ -519,7 +529,8 @@ tm_shape(income_bo_homes) +
   tm_compass(position = c(1.02, 0.5)) + 
   tm_scalebar(position = c(1.14, 0.5)) + 
   tm_title(text = "Median Income Census Tracts in Houston, TX that\nExperienced a Blackout During Winter Storm Uri") + 
-  tm_credits("Figure 6")
+  tm_credits("Figure 6") + 
+  tm_basemap("Esri.WorldTopoMap")
 
 ```
 
@@ -583,7 +594,7 @@ income_class <- income_class %>%
     B19013e1 < 125000 ~ "middle_class",
     TRUE ~ "upper_class" # All others are upper class 
   ) )
-
+# Made these income classes based on Fullerton, 2026 
 
 # COUNTS of homes experiencing blackouts vs not per income class 
 income_class_sum <- income_class %>% 
@@ -596,14 +607,15 @@ ggplot(income_class_sum,
        aes(x = class, 
            y = count, 
            fill = blackout)) + 
-  geom_col(position = "dodge", 
+  geom_col(position="fill", 
+           stat="identity", 
            color = "black") + 
   scale_fill_manual(labels = c("No Blackout", "Blackout"),
                     values = c("#ffad76", "#488f30")) + 
   scale_x_discrete(labels = c('Lower Class', 'Middle Class', 'Upper Class', 'NAs')) +
-  labs(title = "Total Households Count that did and did not\nExperienced Blackouts in Various Income Classes ", 
+  labs(title = "Proportion of Households that did and did not\nExperienced Blackouts in Various Income Classes ", 
        x = "Income Classes", 
-       y = "Counts", 
+       y = "Proportion", 
        fill = "Experienced Blackout", 
        caption = "Figure 8:\nLower income class is below $40,000.\nMiddle class is $40,000 to $125,000.\n Upper class is greater than $125,000.") +
   theme_bw()
@@ -633,7 +645,7 @@ class_count <- class_count %>%
 
 # Creating a kable table 
 knitr::kable(class_count[, c('class', 'prop')], 
-                      col.names = c("Income Class", "Proportion"),
+                      col.names = c("Income Class", "Percentage"),
                       digits = 2, 
                       align = 'c',
                       caption = "Percentage of each Income Class that Experienced a Blackout")
@@ -646,25 +658,14 @@ rm(list = c('class_count_blackout', 'class_count_total'))
 
 ## Conclusion
 
-On February 11-20, 2021, Winter Storm Uri hit Texas. Uri bright record-breaking cold and precipitation, leading to the longest stretch of freezing temperatures in Texas history (1). As temperatures plummeted, power went out across the South, pipes burst, roads iced over, and countless accidents followed (1). Millions of people (more than 2 out of 3 people) were left in the dark and cold with no access to power or a heater (2).
+On February 11-20, 2021, Winter Storm Uri hit Texas (NOAA, 2023). Uri bright record-breaking cold and precipitation, leading to the longest stretch of freezing temperatures in Texas history (NOAA, 2023). As temperatures plummeted, power went out across the South, pipes burst, roads iced over, and countless accidents followed (NOAA, 2023 and Watson P, 2021). Millions of people (more than 2 out of 3 people) were left in the dark and cold with no access to power or a heater at some point (Watson P, 2021).
 
-In Houston, Texas, the power outage centered around the downtown area which is seen in Figures 1 - 5. Figures 6 - 8 investigate the power outages in comparison with income census blocks. The medium income distributions of people who experienced blackouts vs did not experience blackouts are very similar and consistent with the overall medium income distribution in Houston. Figure 7 and the Table illustrates the income classes having similar proportions of residents experiencing blackouts, ranging from about 12% to 16% for each class. Accordingly, there is insufficient evidence to suggest that the power outages during Winter Storm Uri were biased or unjustly distributed.
+In Houston, Texas, the power outage centered around the downtown area which is seen in Figures 1 - 5. Figures 6 - 8 investigate the power outages in comparison with income census blocks. The medium income distributions of people who experienced blackouts vs did not experience blackouts are very similar and consistent with the overall medium income distribution in Houston. As shown in Figure 7 and the table, the proportion of residents experiencing blackouts is relatively consistent across income classes, ranging from about 12% to 16%. Accordingly, there is insufficient evidence to suggest that the power outages during Winter Storm Uri were biased or unjustly distributed.
 
-Limitations to the study 
-
-
+Limitations to the study: 
+The light data was from NASA's Level-1 and Atmosphere Archive and Distribution System Distributed Active Archive Center (LAADS DAAC) which uses Visible Infrared Imaging Radiometer Suite (VIIRS). When using satellite imagery, course spatial resolution and atmospheric interference can impact the study. Furthermore, the road and house data is acquired by Open Street Map which can have data completeness and accuracy issues. 
 
 
 ### Personal Statement
-
 I am from Houston, Texas! I was present during Winter Storm Uri. My father and I were powerless in our home while my mom (Dr. Hessel) was stuck on-call in the hospital for a couple of days. It was a crazy week with no power, pipes bursting, being locked inside, and no school.
 
-freezing over the Loanstar state. The freeze caused power outages across the South,
-
-Citations:
-
--   <https://www.fox26houston.com/news/houston-middle-class-texas-2025>
-
--   <https://www.ncei.noaa.gov/news/great-texas-freeze-february-2021>
-
--   <https://www.uh.edu/hobby/winter2021/storm.pdf>

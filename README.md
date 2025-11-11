@@ -6,19 +6,30 @@ This repository examines the impacts of extreme weather from Winter Storm Uri in
 
 ### FILE STRUCTURE
 
-eds223_extreme_weather_impacts_TX\
-¦--data\
-¦ ¦--ACE_2019\_%YR_TRACT_48_TEXAS.gdb
-
-¦ ¦--VNP46A1
-
-¦ ¦--gis_osm_buildings_a_free_1.gpkg
-
-¦ °--gis_osm_roads_free_1.gpkg
-
-¦--README.md\
-¦--texas_blackout.html\
-°--texas_blackout.qmd
+``` text
+.
+├── README.md
+├── data
+│   ├── ACS_2019_5YR_TRACT_48_TEXAS.gdb
+│   │   ├── gdb
+│   │   └── timestamps
+│   ├── VNP46A1
+│   │   ├── VNP46A1.A2021038.h08v05.001.2021039064328.tif
+│   │   ├── VNP46A1.A2021038.h08v06.001.2021039064329.tif
+│   │   ├── VNP46A1.A2021047.h08v05.001.2021048091106.tif
+│   │   └── VNP46A1.A2021047.h08v06.001.2021048091105.tif
+│   ├── gis_osm_buildings_a_free_1.gpkg
+│   └── gis_osm_roads_free_1.gpkg
+├── eds223_extreme_weather_impacts_TX.Rproj
+├── texas_blackout.html
+├── texas_blackout.pdf
+├── texas_blackout.qmd
+└── texas_blackout_files
+    ├── figure-html
+    │   └── (rendered figures)
+    └── libs
+        └── (Quarto support files)
+```
 
 ### DATA ACCESS
 
@@ -30,7 +41,7 @@ All data is downloaded and accessible in this repository through the "data" fold
 
 -   Night light data is from NASA's Level-1 and Atmospheric Archive & Distribution System Distributed Active Archive Center (LAADS DAAC).
 
--   The road and house data is from orginally from Open Street Map at <https://planet.openstreetmap.org/> but taken from a Geofabrik (a third party) at <https://download.geofabrik.de/>.
+-   The road and house data is from originally from Open Street Map at <https://planet.openstreetmap.org/> but taken from a Geofabrik (a third party) at <https://download.geofabrik.de/>.
 
 -   Texas's socioeconomic data is from the U.S. Census Bureau’s American Community Survey for census tracts in 2019.
 
@@ -58,4 +69,4 @@ Watson, K. P., Cross, R., Jones, M. P., Buttorff, G., Granato, J., Pinto, P., ..
 
 .....
 
-ACKNOWLEDGMENETS: I would like to thank Dr. Annie Adams and Ale Vidal Meza for helping in the creation and development of this project.
+ACKNOWLEDGEMENTS: I would like to thank Dr. Annie Adams and Ale Vidal Meza for helping in the creation and development of this project.
